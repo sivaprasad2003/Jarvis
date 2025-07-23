@@ -29,20 +29,13 @@ git clone https://github.com/your-username/Jarvis.git
 cd Jarvis
 ```
 
-### 2. Create and Activate Virtual Environment
-
-```bash
-python -m venv venv
-.env\Scriptsctivate   # For Windows
-```
-
-### 3. Install Dependencies
+### 2. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> 💡 If installing `dlib` fails, download the `.whl` for your system from: https://www.lfd.uci.edu/~gohlke/pythonlibs/#dlib
+> 💡 If installing `dlib` fails, download the `.whl` for your system from: https://github.com/z-mahmud22/Dlib_Windows_Python3.x
 
 ### 4. Configure Gemini AI
 
