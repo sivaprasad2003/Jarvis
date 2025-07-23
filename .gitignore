@@ -1,0 +1,32 @@
+# Generate a basic .gitignore file suitable for the JARVIS AI assistant project
+
+gitignore_content = '''
+# Ignore virtual environment
+venv/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore logs, system files, and backups
+*.log
+.DS_Store
+*.sqlite3
+
+# Ignore environment or secret config files
+.env
+
+# Ignore authorized face image files
+authorized_faces/
+
+# Ignore screenshots or media generated
+*.png
+*.jpg
+*.jpeg
+'''
+
+gitignore_path = "/mnt/data/.gitignore"
+with open(gitignore_path, "w") as f:
+    f.write(gitignore_content)
+
+gitignore_path
