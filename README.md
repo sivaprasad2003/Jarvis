@@ -35,11 +35,15 @@ cd Jarvis
 pip install -r requirements.txt
 ```
 
-> 💡 If installing `dlib` fails, download the `.whl` for your system from: https://github.com/z-mahmud22/Dlib_Windows_Python3.x
+> 💡 If installing `dlib` fails, Use Precompiled dlib.whl in Packages older according python version 3.x or download the `.whl` for your system from: https://github.com/z-mahmud22/Dlib_Windows_Python3.x
 
 ### 4. Configure Gemini AI
 
-Open `core/config.py` and replace the placeholder:
+Go To https://aistudio.google.com/apikey sign in with your google account
+
+Create API key and Copy that API key 
+
+Open `core/config.py` and Paste the API over Placeholder:
 
 ```python
 GEMINI_API_KEY = "your_actual_google_gemini_api_key"
