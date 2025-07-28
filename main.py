@@ -1,8 +1,8 @@
 # main.py
 from core.speech import speak
 from core.face_auth import face_login, welcome_greeting
-from core.command_center import run_jarvis
-from core.gui import launch_gui
+from core.shared_utils import jarvis_main
+# from core.gui import launch_gui
 from core.utils import handle_error
 
 if __name__ == "__main__":
@@ -10,8 +10,8 @@ if __name__ == "__main__":
     try:
         if face_login():
             welcome_greeting()
-            run_jarvis()
-            launch_gui()  
+            jarvis_main()
+           # launch_gui()  
     except KeyboardInterrupt:
         speak("Manual override engaged. JARVIS shutting down.")
     except Exception as main_error:

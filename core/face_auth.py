@@ -41,6 +41,7 @@ def register_new_face():
                 path = f"authorized_faces/{name}.jpg"
                 cv2.imwrite(path, frame)
                 speak(f"Face registered successfully as {name}.")
+                speak(f"Let me introduce myself, I'm jarvis your virtual assistance. built with an inspiration of Tony Stark's Jarvis.")
                 break
             else:
                 speak("No face detected. Please align properly.")
@@ -65,7 +66,7 @@ def face_login():
             if faces:
                 match = face_recognition.compare_faces(known_encodings, faces[0])
                 if True in match:
-                    speak(f"Access granted. Welcome {known_names[match.index(True)]}.")
+                    speak(f"Access granted, Welcome back {known_names[match.index(True)]}.")
                     cap.release()
                     cv2.destroyAllWindows()
                     return True

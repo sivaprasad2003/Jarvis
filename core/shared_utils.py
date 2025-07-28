@@ -1,11 +1,13 @@
 # core/shared_utils.py
 from core.speech import speak, listen
 from core.config import WAKE_WORD, AI_MODE, STANDBY_MODE, MEMORY_STORE
-from core.object_detection import detect_objects
+from core.object_detection import detect_objects, voice_listener, ensure_yolo_files, stop_detection_event
 from core.memory import remember_this, recall_memory
-from core.media_control import play_youtube, prev_song, volume_up, volume_down, mute, next_song
+from core.media_control import play_pause_media, prev_song, volume_up, volume_down, mute, next_song, unmute, set_volume, parse_volume_percentage
 from core.gemini_ai import ask_gemini_fallback
 from core.utils import handle_error
+from core.screenshot import take_screenshot, show_last_screenshot, open_screenshot_folder
+from core.battery_health import report_battery_health
 import os
 import webbrowser
 import psutil
@@ -20,46 +22,76 @@ def jarvis_main():
                 continue
 
             # === SYSTEM CONTROL ===
-            if "shutdown" in command:
+            if "shutdown system" in command or "shutdown main system" in command:
                 speak("Shutting down the system.")
                 os.system("shutdown /s /t 1")
 
-            elif "restart" in command:
+            elif "restart system" in command or "restart main system" in command:
                 speak("Restarting the system.")
                 os.system("shutdown /r /t 1")
 
-            elif "sleep" in command or "hibernate" in command:
+            elif "hibernate system" in command or "hibernate main system" in command:
                 speak("Hibernating the system.")
                 os.system("shutdown /h")
 
-            elif "lock system" in command:
+            elif "lock system" in command or "lock main system" in command:
                 speak("Locking your system.")
                 os.system("rundll32.exe user32.dll,LockWorkStation")
 
-            elif "detect object" in command or "what do you see" in command:
+            elif "object detection protocol" in command or "what do you see" in command:
                 detect_objects()
+
+            elif "stop object detection" in command:
+                speak("Stopping object detection protocol.")
+                stop_detection_event.set()
 
             elif "remember" in command:
                 fact = command.replace("remember", "").strip()
                 remember_this(fact)
+            
+            elif "battery report" in command or "battery health" in command:
+                speak("Checking battery health.")
+                report_battery_health()
 
             elif "what do you remember" in command:
                 recall_memory()
 
-            elif "volume up" in command:
+            elif any(kw in command for kw in ["pause", "play", "resume media", "stop media"]):
+                play_pause_media()    
+
+            elif "set volume" in command:
+                percent = parse_volume_percentage(command)
+                if percent is not None:
+                    set_volume(percent)
+                else:
+                    speak("Please specify the volume percent to set.")    
+
+            elif "volume up" in command or "increase volume" in command:
                 volume_up()
 
-            elif "volume down" in command:
+            elif "volume down" in command or "decrease volume" in command:
                 volume_down()
 
-            elif "mute" in command:
+            elif "mute" in command or "silence" in command:
                 mute()
 
-            elif "next" in command:
+            elif "unmute" in command or "restore volume" in command:
+                unmute()  
+
+            elif "next song" in command or "skip song" in command:
                 next_song()
 
-            elif "previous" in command:
+            elif "previous song" in command or "go back to song " in command:
                 prev_song()
+
+            elif "take screenshot" in command:
+                take_screenshot()
+
+            elif "show last screenshot" in command:
+                show_last_screenshot()
+
+            elif "open screenshot folder" in command:
+                open_screenshot_folder()
 
             # === OPEN APPS / SITES ===
             elif "open youtube" in command:
@@ -79,7 +111,7 @@ def jarvis_main():
                 os.system("start notepad")
 
             elif "open calculator" in command:
-                os.system("start calc")
+                os.system("start calc")   
 
             elif "jarvis are you there" in command:
                 speak("At your service sir.")    
@@ -134,8 +166,8 @@ def jarvis_main():
                         speak(reply)
 
             # === EXIT / SHUTDOWN ===
-            elif "exit" in command or "quit" in command or "stop" in command:
-                speak("Goodbye sir. Shutting down.")
+            elif "exit yourself jarvis" in command or "close jarvis subsystem" in command:
+                speak("Shutting down jarvis systems, Goodbye sir.")
                 break
 
             else:

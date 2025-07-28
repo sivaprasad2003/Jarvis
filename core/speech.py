@@ -1,7 +1,10 @@
 import pyttsx3
 import speech_recognition as sr
+import os
+import threading
 
 engine = pyttsx3.init()
+lock = threading.Lock()
 engine.setProperty('rate', 150)
 engine.setProperty('volume', 1.0)
 voices = engine.getProperty('voices')
@@ -9,11 +12,12 @@ engine.setProperty('voice', voices[1].id)
 
 def speak(text):
     print(f"JARVIS: {text}")
-    try:
-        engine.say(text)
-        engine.runAndWait()
-    except Exception as e:
-        print(f"[Speak Error] {e}")
+    with lock:
+        try:
+            engine.say(text)
+            engine.runAndWait()
+        except Exception as e:
+            print(f"[Speak Error] {e}")
 
 def listen(timeout=5, retries=2, wake_word="jarvis"):
     r = sr.Recognizer()
