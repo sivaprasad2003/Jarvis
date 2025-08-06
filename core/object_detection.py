@@ -78,6 +78,9 @@ def detect_objects():
     try:
         speak("Intializing object detection protocol. Ask me what I see anytime.")
 
+        # Ensure stop event is cleared before starting
+        stop_detection_event.clear()
+
         ensure_yolo_files()
         classes = load_classes(names_path)
 
@@ -89,7 +92,25 @@ def detect_objects():
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
-        thread = threading.Thread(target=voice_listener, daemon=True)
+        def voice_command_listener():
+            from core.speech import listen
+            global detected_labels
+            while not stop_detection_event.is_set():
+                query = listen()
+                if not query:
+                    continue
+                if "stop object detection" in query:
+                    speak("Stopping object detection protocol.")
+                    stop_detection_event.set()
+                elif any(trigger in query for trigger in [
+                    "what do you see", "what is this", "what's this", "describe", "tell me"
+                ]):
+                    if detected_labels:
+                        speak(f"I see: {', '.join(set(detected_labels))}")
+                    else:
+                        speak("I don't see any known objects.")
+
+        thread = threading.Thread(target=voice_command_listener, daemon=True)
         thread.start()
 
         cap = cv2.VideoCapture(0)
@@ -123,7 +144,13 @@ def detect_objects():
             detected_labels.clear()
 
             if indexes is not None and len(indexes) > 0:
-                for i in (indexes.flatten() if hasattr(indexes, "flatten") else indexes):
+                if isinstance(indexes, np.ndarray):
+                    idxs = indexes.flatten()
+                elif isinstance(indexes, (list, tuple)):
+                    idxs = [i[0] if isinstance(i, (list, tuple, np.ndarray)) else i for i in indexes]
+                else:
+                    idxs = list(indexes)
+                for i in idxs:
                     x, y, w_box, h_box = boxes[i]
                     label = classes[class_ids[i]]
                     detected_labels.append(label)

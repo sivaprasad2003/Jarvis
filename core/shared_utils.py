@@ -1,5 +1,5 @@
 # core/shared_utils.py
-from core.speech import speak, listen
+from core.speech import speak, standby_mode, listen
 from core.config import WAKE_WORD, AI_MODE, STANDBY_MODE, MEMORY_STORE
 from core.object_detection import detect_objects, voice_listener, ensure_yolo_files, stop_detection_event
 from core.memory import remember_this, recall_memory
@@ -8,16 +8,28 @@ from core.gemini_ai import ask_gemini_fallback
 from core.utils import handle_error
 from core.screenshot import take_screenshot, show_last_screenshot, open_screenshot_folder
 from core.battery_health import report_battery_health
+from core.speed_test import run_speed_test
+from core.battery_monitor import check_battery_alert
+from core.weather import speak_weather, will_it_rain
+from core.search import handle_search
+from core.system_status import report_system_status, check_cpu_temperature, check_fan_speed
+from core.ip_location_info import get_ip_address, get_location
+from core.themes import switch_to_dark_mode, switch_to_light_mode
+from core.connectivity import toggle_bluetooth, toggle_wifi
+from core.media_control import play_song_on_youtube
+
 import os
 import webbrowser
 import psutil
 import datetime
+import requests
 
 def jarvis_main():
     speak("Jarvis online and ready.")
     while True:
         try:
-            command = listen()
+            check_battery_alert(speak)
+            command = standby_mode()
             if not command:
                 continue
 
@@ -38,16 +50,27 @@ def jarvis_main():
                 speak("Locking your system.")
                 os.system("rundll32.exe user32.dll,LockWorkStation")
 
-            elif "object detection protocol" in command or "what do you see" in command:
+            elif "object detection" in command or "what do you see" in command:
                 detect_objects()
 
             elif "stop object detection" in command:
-                speak("Stopping object detection protocol.")
                 stop_detection_event.set()
 
             elif "remember" in command:
                 fact = command.replace("remember", "").strip()
                 remember_this(fact)
+
+            elif "enable dark mode" in command or "activate dark mode" in command:
+                switch_to_dark_mode()
+
+            elif "enable light mode" in command or "activate light mode" in command:
+                switch_to_light_mode()
+
+            elif "enable wifi" in command or "disable wifi" in command:
+                toggle_wifi()
+
+            elif "enable bluetooth" in command or "disable bluetooth" in command:
+                toggle_bluetooth()    
             
             elif "battery report" in command or "battery health" in command:
                 speak("Checking battery health.")
@@ -56,7 +79,7 @@ def jarvis_main():
             elif "what do you remember" in command:
                 recall_memory()
 
-            elif any(kw in command for kw in ["pause", "play", "resume media", "stop media"]):
+            elif any(kw in command for kw in ["pause media", "play media", "resume media", "stop media"]):
                 play_pause_media()    
 
             elif "set volume" in command:
@@ -93,7 +116,12 @@ def jarvis_main():
             elif "open screenshot folder" in command:
                 open_screenshot_folder()
 
-            # === OPEN APPS / SITES ===
+            elif "what's my ip address" in command:
+                get_ip_address()
+
+            elif "what's my location" in command or "where am i" in command:
+                get_location()
+
             elif "open youtube" in command:
                 webbrowser.open("https://www.youtube.com")
                 speak("Opening YouTube.")
@@ -102,6 +130,13 @@ def jarvis_main():
                 webbrowser.open("https://www.google.com")
                 speak("Opening Google.")
 
+            elif "play" in command and "on youtube" in command:
+                song = command.replace("play", "").replace("on youtube", "").strip()
+                if song:
+                    play_song_on_youtube(song)
+                else:
+                    speak("Please specify the song name to play.")
+    
             elif "open downloads" in command:
                 downloads = os.path.join(os.path.expanduser("~"), "Downloads")
                 os.startfile(downloads)
@@ -113,7 +148,7 @@ def jarvis_main():
             elif "open calculator" in command:
                 os.system("start calc")   
 
-            elif "jarvis are you there" in command:
+            elif "are you there" in command:
                 speak("At your service sir.")    
 
             elif "open" in command:
@@ -121,49 +156,105 @@ def jarvis_main():
                 speak(f"Opening {app_name}")
                 os.system(f'start {app_name}')
 
-            # === SYSTEM INFO ===
-            elif "system status" in command or "system info" in command:
+            elif "who are you" in command or "tell me about yourself" in command:
+                speak("I am JARVIS, your personal AI assistant, designed with inspiration of Tony Stark. At your service, sir.")
+            elif "are you iron man" in command:
+                speak("I am not Iron Man, but I do serve him. You, however, are my priority.")
+            elif "do you love pepper" in command:
+                speak("As an AI, I do not possess feelings, but Miss Potts is highly valued by Mr. Stark.")
+
+            # === REMINDERS & ALARMS ===
+            elif "set reminder for" in command:
+                import re, threading
+                match = re.search(r"set reminder for (\d+) (second|seconds|minute|minutes|hour|hours)", command)
+                if match:
+                    value, unit = int(match.group(1)), match.group(2)
+                    seconds = value * (3600 if 'hour' in unit else 60 if 'minute' in unit else 1)
+                    def reminder():
+                        speak("Reminder: Time's up!")
+                    threading.Timer(seconds, reminder).start()
+                    speak(f"Reminder set for {value} {unit}.")
+                else:
+                    speak("Please specify the time for the reminder, e.g., 'set reminder for 5 minutes'.")
+
+            # === JOKES ===
+            elif "tell me a joke" in command:
+                jokes = [
+                    "Why did Tony Stark always carry a pencil? In case he had to draw his suit.",
+                    "Why did Jarvis go to school? To become a smarter AI.",
+                    "I would tell you a UDP joke, but you might not get it."
+                ]
+                import random
+                speak(random.choice(jokes))
+
+            # === NEWS ===
+            elif "tell me the news" in command or "news" in command:
                 try:
-                    cpu = psutil.cpu_percent(interval=1)
-                    ram = psutil.virtual_memory().percent
-                    disk = psutil.disk_usage('/').percent
-
-                    speak(f"CPU usage is at {cpu} percent.")
-                    speak(f"RAM usage is at {ram} percent.")
-                    speak(f"Disk usage is at {disk} percent.")
-
-                    battery = psutil.sensors_battery()
-                    if battery:
-                        percent = battery.percent
-                        plugged = "charging" if battery.power_plugged else "not charging"
-                        speak(f"Battery is at {percent} percent and it is {plugged}.")
+                    from core.config import NEWSAPI_KEY
+                    news_api = NEWSAPI_KEY # Replace with your free API key
+                    response = requests.get(news_api)
+                    articles = response.json().get("articles", [])
+                    if articles:
+                        speak("Here are the top headlines:")
+                        for article in articles[:3]:
+                            speak(article.get("title", "No title available."))
+                    else:
+                        speak("Sorry, I couldn't fetch the news right now.")
                 except Exception as e:
-                    handle_error("system_status", e)
-                    speak("Sorry, I couldn't fetch system status.")
+                    handle_error("news", e)
+                    speak("News service error.")    
 
-            elif "time" in command:
+            elif "system status" in command or "system info" in command:
+                report_system_status()
+                check_cpu_temperature()
+                check_fan_speed()
+
+            elif "check cpu temperature" in command:
+                check_cpu_temperature()
+
+            elif "check fan speed" in command:
+                check_fan_speed()      
+
+            elif "speed test" in command or "internet speed" in command:
+                run_speed_test()          
+
+            elif "what time" in command:
                 now = datetime.datetime.now().strftime("%I:%M %p")
                 speak(f"The time is {now}.")
 
-            elif "date" in command:
-                today = datetime.date.today().strftime("%B %d, %Y")
-                speak(f"Today is {today}.")
+            elif "what date today" in command or "what day today" in command:
+                today = datetime.date.today()
+                speak(f"Today is {today.strftime('%A, %B %d, %Y')}.")
 
-            elif "day" in command:
-                day = datetime.datetime.now().strftime("%A")
-                speak(f"Today is {day}.")
-    
+            elif "what was yesterday's date" in command or "yesterday what date" in command or "what was yesterday's day" in command or "yesterday what day" in command:
+                yesterday = datetime.date.today() - datetime.timedelta(days=1)
+                speak(f"Yesterday was {yesterday.strftime('%A, %B %d, %Y')}.")
+
+            elif "what is tomorrow's date" in command or "tomorrow what date" in command or "what is tomorrow's date" in command or "tomorrow what date" in command:
+                tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+                speak(f"Tomorrow will be {tomorrow.strftime('%A, %B %d, %Y')}.")
+
+            elif any(kw in command for kw in ["search google for", "search amazon for", "search flipkart for"]):
+                handle_search(command) 
+
+            elif "weather" in command:
+                speak_weather()
+
+            elif "will it rain" in command or "rain today" in command:
+                will_it_rain()
+       
             # === AI MODE ===
             elif "activate ai mode" in command or "enter gemini" in command:
-                speak("AI Mode activated. Ask me anything.")
+                speak("AI Mode activated. You may now ask questions.")
                 while True:
                     ai_command = listen()
+                    if not ai_command:
+                        continue
                     if "deactivate ai mode" in ai_command or "leave gemini" in ai_command:
                         speak("Exiting AI Mode.")
                         break
-                    elif ai_command:
-                        reply = ask_gemini_fallback(ai_command)
-                        speak(reply)
+                    reply = ask_gemini_fallback(ai_command)
+                    speak(reply)
 
             # === EXIT / SHUTDOWN ===
             elif "exit yourself jarvis" in command or "close jarvis subsystem" in command:

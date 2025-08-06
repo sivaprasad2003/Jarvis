@@ -6,6 +6,8 @@ import ctypes
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 import keyboard
+import pywhatkit
+import webbrowser
 
 # Setup Pycaw interface
 devices = AudioUtilities.GetSpeakers()
@@ -46,6 +48,14 @@ def volume_down():
     for _ in range(5):
         pyautogui.press("volumedown")
         time.sleep(0.1)
+
+def play_song_on_youtube(song_name):
+    try:
+        speak(f"Searching {song_name} on YouTube.")
+        pywhatkit.playonyt(song_name)
+    except Exception as e:
+        speak("YouTube playback failed.")
+        print("[CRITICAL ERROR] YouTube fallback:", e)
 
 def mute():
     pyautogui.press("volumemute")

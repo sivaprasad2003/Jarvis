@@ -3,6 +3,8 @@
 # === API Keys ===
 import os
 GEMINI_API_KEY = "AIzaSyDAJfovc7LPw8cr6bzaz7fxME3N5bINX70"  # Replace with your actual Gemini API key
+OPENWEATHERMAP_API_KEY = "b6907d289e10d714a6e88b30761fae22"  # OpenWeatherMap demo key
+NEWSAPI_KEY = "17e5fc4b600b42828b1ba1faf08d17ef"
 
 # === Assistant Settings ===
 WAKE_WORD = "jarvis"
