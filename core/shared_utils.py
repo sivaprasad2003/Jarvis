@@ -116,10 +116,10 @@ def jarvis_main():
             elif "open screenshot folder" in command:
                 open_screenshot_folder()
 
-            elif "what's my ip address" in command:
+            elif "ip address" in command:
                 get_ip_address()
 
-            elif "what's my location" in command or "where am i" in command:
+            elif "location" in command:
                 get_location()
 
             elif "open youtube" in command:

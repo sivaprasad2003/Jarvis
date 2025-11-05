@@ -30,3 +30,8 @@ with open(gitignore_path, "w") as f:
     f.write(gitignore_content)
 
 gitignore_path
+
+# Ignore the models directory
+*.names
+*.cfg
+*.weights
