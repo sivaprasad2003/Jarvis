@@ -25,7 +25,7 @@ JARVIS is your personal AI assistant that understands voice commands, recognizes
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/Jarvis.git
+git clone https://github.com/sivaprasad2003/Jarvis.git
 cd Jarvis
 ```
 
