@@ -1,0 +1,95 @@
+JARVIS VOICE COMMANDS & FUNCTION MAPPINGS
+==========================================
+Below is a complete list of voice commands built into JARVIS and the corresponding Python functions they trigger under the hood (found primarily in `core/shared_utils.py`).
+
+Prefix all commands with your wake word ("Jarvis") unless AI Mode is active.
+
+--------------------------------------------------------------------------------
+1. SYSTEM POWER & SECURITY
+--------------------------------------------------------------------------------
+"shutdown system" / "shutdown main system"    -> os.system("shutdown /s /t 1")
+"restart system" / "restart main system"      -> os.system("shutdown /r /t 1")
+"hibernate system" / "hibernate main system"  -> os.system("shutdown /h")
+"lock system" / "lock main system"            -> os.system("rundll32.exe user32.dll,LockWorkStation")
+"exit yourself jarvis"                        -> stop_listening_thread()           (Gracefully closes voice systems)
+"emergency stop" / "terminate protocol"       -> sys.exit(0)                       (Instantly kills all frozen threads/cameras)
+
+--------------------------------------------------------------------------------
+2. APPLICATION LAUNCHING & MACROS
+--------------------------------------------------------------------------------
+"open [app name]"                             -> open_apps(app_name)               (Takes native control of keyboard to search/launch via Windows Start Menu)
+"open downloads"                              -> os.startfile(downloads)           (Opens User Downloads Directory)
+"open notepad"                                -> os.system("start notepad")
+"open calculator"                             -> os.system("start calc")
+
+--------------------------------------------------------------------------------
+3. COMPUTER VISION & OBJECT DETECTION
+--------------------------------------------------------------------------------
+"object detection" / "start object detection" -> detect_objects()                  (Initiates YOLO/cvlib webcam detection feed)
+"what do you see" / "what is this"            -> reads 'detected_labels'           (Vocally announces all objects currently on camera)
+"stop object detection"                       -> stop_detection_event.set()        (Safely destroys the camera thread)
+
+--------------------------------------------------------------------------------
+4. ARTIFICIAL INTELLIGENCE & CONVERSATION
+--------------------------------------------------------------------------------
+"activate ai mode" / "enter gemini"           -> Sets `ai_mode_active = True`      (Turns off Wake-Word requirement; routes all audio natively to Google Gemini)
+"deactivate ai mode" / "exit ai mode"         -> Sets `ai_mode_active = False`     (Restores standard Wake Word protocols)
+"are you there"                               -> speak("At your service sir.")
+"who are you" / "tell me about yourself"      -> speak(Introduction paragraph)
+"are you iron man"                            -> speak(Easter egg response)
+"do you love pepper"                          -> speak(Easter egg response)
+"tell me a joke"                              -> random.choice(jokes)
+
+--------------------------------------------------------------------------------
+5. HARDWARE & DIAGNOSTICS
+--------------------------------------------------------------------------------
+"system status" / "system info"               -> report_system_status() + check_cpu_temperature() + check_fan_speed()
+"check cpu temperature"                       -> check_cpu_temperature()
+"check fan speed"                             -> check_fan_speed()
+"battery report" / "battery health"           -> report_battery_health()
+"speed test" / "internet speed"               -> run_speed_test()
+"ip address"                                  -> get_ip_address()
+"location"                                    -> get_location()
+
+--------------------------------------------------------------------------------
+6. MEDIA & VOLUME PIPELINE
+--------------------------------------------------------------------------------
+"play [song name] on youtube"                 -> play_song_on_youtube(song)        (Opens browser and auto-plays via pywhatkit)
+"pause media" / "play media" / "stop media"   -> play_pause_media()                (Simulates Keyboard Media Play/Pause)
+"next song" / "skip song"                     -> next_song()
+"previous song"                               -> prev_song()
+"set volume [percent]"                        -> set_volume(percent)               (Adjusts Pycaw master system audio COM endpoint)
+"volume up" / "increase volume"               -> volume_up()
+"volume down" / "decrease volume"             -> volume_down()
+"mute" / "silence"                            -> mute()
+"unmute" / "restore volume"                   -> unmute()
+
+--------------------------------------------------------------------------------
+7. PERSONAL MEMORY & UTILITIES
+--------------------------------------------------------------------------------
+"remember [fact]"                             -> remember_this(fact)               (Writes data and timestamp to memory.json)
+"what do you remember"                        -> recall_memory()                   (Reads json dictionary out loud)
+"take screenshot"                             -> take_screenshot()                 (Saves timestamped PNG to root folder)
+"show last screenshot"                        -> show_last_screenshot()            (Opens newest file in screenshots directory)
+"open screenshot folder"                      -> open_screenshot_folder()
+"set reminder for [amount] [minutes/hours]"   -> threading.Timer(sec, reminder)    (Triggers an asynchronous audible alert)
+
+--------------------------------------------------------------------------------
+8. WEB SEARCH, WEATHER & TIME
+--------------------------------------------------------------------------------
+"search google/amazon/flipkart for [query]"   -> handle_search(command)            (Parses string and executes web search)
+"weather"                                     -> speak_weather() 
+"will it rain" / "rain today"                 -> will_it_rain()
+"tell me the news" / "news"                   -> requests.get(NewsAPI)             (Reads top 3 global headlines)
+"what time"                                   -> Speaks datetime.datetime.now()
+"what date today" / "what day today"          -> Speaks today's date
+"what was yesterday's date"                   -> Speaks yesterday's date
+"what is tomorrow's date"                     -> Speaks tomorrow's date
+
+--------------------------------------------------------------------------------
+9. OS THEMES & CONNECTIVITY
+--------------------------------------------------------------------------------
+"enable dark mode" / "activate dark mode"     -> switch_to_dark_mode()             (Modifies Windows Registry to Dark App Theme)
+"enable light mode" / "activate light mode"   -> switch_to_light_mode()            (Modifies Windows Registry to Light App Theme)
+"enable wifi" / "disable wifi"                -> toggle_wifi()
+"enable bluetooth" / "disable bluetooth"      -> toggle_bluetooth()
