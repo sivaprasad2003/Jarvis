@@ -1,6 +1,8 @@
 # core/system_status.py (Revised)
 import wmi
 import psutil
+import threading
+import time
 from core.speech import speak
 from core.utils import handle_error # Assuming handle_error exists in core.utils
 
@@ -114,3 +116,32 @@ def check_fan_speed():
     except Exception as e:
         handle_error("check_fan_speed", e)
         speak("An error occurred while checking fan speed.")
+
+monitoring_thread = None
+
+def hardware_monitor_loop():
+    while True:
+        try:
+            if WMI_AVAILABLE:
+                w_wmi = get_wmi_object(namespace="root\wmi")
+                if w_wmi:
+                    temp_data = w_wmi.MSAcpi_ThermalZoneTemperature()
+                    if temp_data:
+                        max_celsius = -float('inf')
+                        for temp_zone in temp_data:
+                            tk = getattr(temp_zone, 'CurrentTemperature', None)
+                            if tk is not None:
+                                c = (tk / 10.0) - 273.15
+                                if c > max_celsius:
+                                    max_celsius = c
+                        if max_celsius > 90:
+                            speak(f"Warning! CPU temperature is critically high at {int(max_celsius)} degrees Celsius.")
+        except:
+            pass
+        time.sleep(300) # Check every 5 minutes
+
+def start_hardware_monitoring():
+    global monitoring_thread
+    if monitoring_thread is None or not monitoring_thread.is_alive():
+        monitoring_thread = threading.Thread(target=hardware_monitor_loop, daemon=True)
+        monitoring_thread.start()

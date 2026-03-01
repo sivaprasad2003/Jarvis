@@ -10,13 +10,27 @@ def load_known_faces():
     encodings, names = [], []
     try:
         os.makedirs("authorized_faces", exist_ok=True)
+        
+        # Merge manual 'known_faces' directory edits user made back into authorized_faces
+        if os.path.exists("known_faces"):
+            import shutil
+            for f in os.listdir("known_faces"):
+                if f.lower().endswith((".jpg", ".png", ".jpeg")):
+                    shutil.copy(os.path.join("known_faces", f), os.path.join("authorized_faces", f))
+                    
         for f in os.listdir("authorized_faces"):
-            if f.endswith((".jpg", ".png")):
-                image = face_recognition.load_image_file(f"authorized_faces/{f}")
-                encoding = face_recognition.face_encodings(image)
-                if encoding:
-                    encodings.append(encoding[0])
-                    names.append(os.path.splitext(f)[0])
+            if f.lower().endswith((".jpg", ".png", ".jpeg")):
+                path = os.path.join("authorized_faces", f)
+                img = cv2.imread(path)
+                if img is not None:
+                    # Convert to RGB and force continuous memory array for Dlib to prevent RuntimeError
+                    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    rgb = np.ascontiguousarray(rgb)
+                    
+                    faces = face_recognition.face_encodings(rgb)
+                    if faces:
+                        encodings.append(faces[0])
+                        names.append(os.path.splitext(f)[0])
     except Exception as e:
         handle_error("load_known_faces", e)
     return encodings, names
@@ -62,7 +76,9 @@ def face_login():
                 speak("Camera error.")
                 break
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            faces = face_recognition.face_encodings(rgb)
+            small_rgb = cv2.resize(rgb, (0, 0), fx=0.5, fy=0.5)
+            small_rgb = np.ascontiguousarray(small_rgb)
+            faces = face_recognition.face_encodings(small_rgb)
             if faces:
                 match = face_recognition.compare_faces(known_encodings, faces[0])
                 if True in match:
@@ -86,13 +102,19 @@ def face_login():
 
         # 🔐 Ask for registration after 3 failed attempts
         speak("Would you like to register a new face? Say 'yes' or 'no'.")
-        response = listen()
-        if "yes" in response:
-            register_new_face()
-            return face_login()  # Retry login after registration
-        else:
-            speak("Access denied. Shutting down.")
-            sys.exit()
+        for _ in range(3):
+            response = listen()
+            if "yes" in response:
+                register_new_face()
+                return face_login()  # Retry login after registration
+            elif "no" in response:
+                break
+            elif not response:
+                continue
+
+        speak("Access denied. Shutting down.")
+        import sys
+        sys.exit()
     except Exception as e:
         handle_error("face_login", e)
         if 'cap' in locals():

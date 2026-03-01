@@ -8,7 +8,6 @@ import os
 import urllib.request
 import shutil
 
-import cvlib as cv
 from core.speech import speak, listen
 from core.utils import handle_error
 
@@ -73,14 +72,9 @@ def voice_listener():
         except Exception as e:
             handle_error("voice_listener", e)
 
-def detect_objects():
+def run_object_detection():
     global detected_labels
     try:
-        speak("Intializing object detection protocol. Ask me what I see anytime.")
-
-        # Ensure stop event is cleared before starting
-        stop_detection_event.clear()
-
         ensure_yolo_files()
         classes = load_classes(names_path)
 
@@ -166,5 +160,18 @@ def detect_objects():
         stop_detection_event.set()
 
     except Exception as e:
-        handle_error("detect_objects", e)
+        handle_error("run_object_detection", e)
         stop_detection_event.set()
+
+
+def detect_objects():
+    # Attempt to start the camera loop in a background thread to prevent blocking main process.
+    if not stop_detection_event.is_set() and hasattr(detect_objects, "thread") and detect_objects.thread.is_alive():
+        speak("Object detection is already running.")
+        return
+        
+    speak("Initializing object detection protocol. Ask me what I see anytime.")
+    stop_detection_event.clear()
+    
+    detect_objects.thread = threading.Thread(target=run_object_detection, daemon=True)
+    detect_objects.thread.start()

@@ -1,7 +1,8 @@
 # core/shared_utils.py
-from core.speech import speak, standby_mode, listen
+from core.speech import speak, listen, start_listening_thread, get_next_command, stop_listening_thread
+import core.speech as speech
 from core.config import WAKE_WORD, AI_MODE, STANDBY_MODE, MEMORY_STORE
-from core.object_detection import detect_objects, voice_listener, ensure_yolo_files, stop_detection_event
+from core.object_detection import detect_objects, ensure_yolo_files, stop_detection_event
 from core.memory import remember_this, recall_memory
 from core.media_control import play_pause_media, prev_song, volume_up, volume_down, mute, next_song, unmute, set_volume, parse_volume_percentage
 from core.gemini_ai import ask_gemini_fallback
@@ -17,19 +18,24 @@ from core.ip_location_info import get_ip_address, get_location
 from core.themes import switch_to_dark_mode, switch_to_light_mode
 from core.connectivity import toggle_bluetooth, toggle_wifi
 from core.media_control import play_song_on_youtube
+from core.app_launcher import open_windows_app
 
 import os
 import webbrowser
 import psutil
 import datetime
 import requests
+import threading
 
 def jarvis_main():
     speak("Jarvis online and ready.")
+    start_listening_thread()
+    ai_mode_active = False
+    speech.REQUIRE_WAKE_WORD = True
     while True:
         try:
             check_battery_alert(speak)
-            command = standby_mode()
+            command = get_next_command(timeout=1.0)
             if not command:
                 continue
 
@@ -50,11 +56,19 @@ def jarvis_main():
                 speak("Locking your system.")
                 os.system("rundll32.exe user32.dll,LockWorkStation")
 
-            elif "object detection" in command or "what do you see" in command:
+            elif "object detection" in command or "start object detection" in command:
                 detect_objects()
+
+            elif "what do you see" in command or "what is this" in command:
+                from core.object_detection import detected_labels
+                if detected_labels:
+                    speak(f"I see: {', '.join(set(detected_labels))}")
+                else:
+                    speak("I don't see anything notable right now.")
 
             elif "stop object detection" in command:
                 stop_detection_event.set()
+                speak("Stopped object detection.")
 
             elif "remember" in command:
                 fact = command.replace("remember", "").strip()
@@ -122,14 +136,6 @@ def jarvis_main():
             elif "location" in command:
                 get_location()
 
-            elif "open youtube" in command:
-                webbrowser.open("https://www.youtube.com")
-                speak("Opening YouTube.")
-
-            elif "open google" in command:
-                webbrowser.open("https://www.google.com")
-                speak("Opening Google.")
-
             elif "play" in command and "on youtube" in command:
                 song = command.replace("play", "").replace("on youtube", "").strip()
                 if song:
@@ -153,8 +159,14 @@ def jarvis_main():
 
             elif "open" in command:
                 app_name = command.replace("open", "").strip()
-                speak(f"Opening {app_name}")
-                os.system(f'start {app_name}')
+                if app_name:
+                    speak(f"Attempting to open {app_name}")
+                    success = open_windows_app(app_name)
+                    if not success:
+                        speak(f"Could not find or open application {app_name}.")
+                    else:
+                        speak(f"Done.")   
+                    
 
             elif "who are you" in command or "tell me about yourself" in command:
                 speak("I am JARVIS, your personal AI assistant, designed with inspiration of Tony Stark. At your service, sir.")
@@ -244,25 +256,47 @@ def jarvis_main():
                 will_it_rain()
        
             # === AI MODE ===
-            elif "activate ai mode" in command or "enter gemini" in command:
-                speak("AI Mode activated. You may now ask questions.")
-                while True:
-                    ai_command = listen()
-                    if not ai_command:
-                        continue
-                    if "deactivate ai mode" in ai_command or "leave gemini" in ai_command:
-                        speak("Exiting AI Mode.")
-                        break
-                    reply = ask_gemini_fallback(ai_command)
-                    speak(reply)
+            elif "activate ai mode" in command or "enter gemini" in command or "let's talk" in command:
+                ai_mode_active = True
+                speech.REQUIRE_WAKE_WORD = False
+                speak("AI Mode activated. You can speak to me naturally now without saying Jarvis. How can I help you?")
+                continue
+
+            # Process any commands in AI mode if active, and handle deactivation
+            if ai_mode_active:
+                if "deactivate ai mode" in command or "leave gemini" in command or "exit ai mode" in command or "stop ai mode" in command or "goodbye" in command.lower():
+                    ai_mode_active = False
+                    speech.REQUIRE_WAKE_WORD = True
+                    speak("Exiting AI conversational mode. Standard command protocols restored.")
+                    continue
+                
+                # Exclude basic commands from accidentally triggering Gemini constantly
+                local_commands = ["volume", "mute", "turn on", "turn off", "shutdown", "stop listening"]
+                if not any(lc in command.lower() for lc in local_commands):
+                    def process_gemini(query):
+                        reply = ask_gemini_fallback(query)
+                        speak(reply)
+                        
+                    threading.Thread(target=process_gemini, args=(command,), daemon=True).start()
+                continue
 
             # === EXIT / SHUTDOWN ===
             elif "exit yourself jarvis" in command or "close jarvis subsystem" in command:
                 speak("Shutting down jarvis systems, Goodbye sir.")
+                stop_listening_thread()
                 break
 
+            elif "emergency stop" in command or "terminate protocol" in command:
+                speak("Emergency stop engaged. Terminating all processes immediately.")
+                from core.speech import stop_listening_thread
+                from core.object_detection import stop_detection_event
+                stop_detection_event.set()
+                stop_listening_thread()
+                import sys
+                sys.exit(0)
+
             else:
-                speak("Command not recognized. Please try again.")
+                pass # Silently ignore ambient noise and unidentified chatter
 
         except Exception as e:
             handle_error("jarvis_main", e)

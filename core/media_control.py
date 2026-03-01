@@ -1,19 +1,22 @@
 # core/media_control.py
 import pyautogui
 import time
+import os
+
+try:
+    from ctypes import cast, POINTER
+    from comtypes import CLSCTX_ALL
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    PYCAW_AVAILABLE = True
+except Exception as e:
+    print(f"[Warning] PyCAW audio control unavailable: {e}")
+    PYCAW_AVAILABLE = False
+
 from core.speech import speak
-import ctypes
-from comtypes import CLSCTX_ALL
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-import keyboard
 import pywhatkit
 import webbrowser
-
-# Setup Pycaw interface
-devices = AudioUtilities.GetSpeakers()
-interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-volume_interface = ctypes.cast(interface, ctypes.POINTER(IAudioEndpointVolume))
-
+import keyboard
+# Safe Volume Setup
 def play_pause_media():
     try:
         keyboard.send("play/pause media")
@@ -29,7 +32,14 @@ def parse_volume_percentage(command: str):
     return None
 
 def set_volume(percent):
+    if not PYCAW_AVAILABLE:
+        speak("Volume control is unavailable on this system version.")
+        return
     try:
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(
+            IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        volume_interface = cast(interface, POINTER(IAudioEndpointVolume))
         volume = max(0.0, min(percent / 100.0, 1.0))
         volume_interface.SetMasterVolumeLevelScalar(volume, None)
         speak(f"Volume set to {percent}%")
