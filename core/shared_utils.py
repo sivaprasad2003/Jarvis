@@ -19,6 +19,12 @@ from core.themes import switch_to_dark_mode, switch_to_light_mode
 from core.connectivity import toggle_bluetooth, toggle_wifi
 from core.media_control import play_song_on_youtube
 from core.app_launcher import open_windows_app
+from core.advanced_os import window_control
+from core.advanced_os import read_clipboard
+from core.advanced_os import empty_recycle_bin
+from core.advanced_os import clear_temp_files
+from core.advanced_os import dynamic_app_launcher
+from core.advanced_os import type_dictation
 
 import os
 import webbrowser
@@ -157,13 +163,13 @@ def jarvis_main():
             elif "are you there" in command:
                 speak("At your service sir.")    
 
-            elif "open" in command:
-                app_name = command.replace("open", "").strip()
+            elif "launch" in command:
+                app_name = command.replace("launch", "").strip()
                 if app_name:
-                    speak(f"Attempting to open {app_name}")
+                    speak(f"Attempting to launch {app_name}")
                     success = open_windows_app(app_name)
                     if not success:
-                        speak(f"Could not find or open application {app_name}.")
+                        speak(f"Could not find or launch application {app_name}.")
                     else:
                         speak(f"Done.")   
                     
@@ -214,7 +220,48 @@ def jarvis_main():
                         speak("Sorry, I couldn't fetch the news right now.")
                 except Exception as e:
                     handle_error("news", e)
-                    speak("News service error.")    
+                    speak("News service error.")  
+                    
+             # --- NEW ADVANCED COMMANDS ---
+        
+            elif "type for me" in command:
+                speak("What should I type, sir?")
+                dictation = listen() # Uses your existing listen() function
+                if dictation:
+                    type_dictation(dictation)
+                    speak("Typing complete.")
+
+            elif "switch window" in command or "switch tab" in command:
+                speak("Switching window.")
+                window_control("switch")
+
+            elif "close this window" in command or "close app" in command:
+                speak("Closing current application.")
+                window_control("close")
+
+            elif "minimize all" in command or "show desktop" in command:
+                speak("Minimizing all windows.")
+                window_control("minimize all")
+
+            elif "read clipboard" in command or "what did i copy" in command:
+                response = read_clipboard()
+                speak(response)
+
+            elif "empty recycle bin" in command or "empty trash" in command:
+                response = empty_recycle_bin()
+                speak(response)
+
+            elif "clear temp files" in command or "optimize system" in command:
+                speak("Initiating system optimization...")
+                response = clear_temp_files()
+                speak(response)
+
+            elif "launch" in command or "open" in command:
+                # Dynamically parses "launch [app name]"
+                app_name = command.replace("launch", "").replace("open", "").strip()
+                if app_name:
+                    response = dynamic_app_launcher(app_name)
+                    speak(response)          
 
             elif "system status" in command or "system info" in command:
                 report_system_status()

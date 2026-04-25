@@ -52,7 +52,7 @@ def listen():
     r = sr.Recognizer()
     r.energy_threshold = 400
     r.dynamic_energy_threshold = True
-    r.pause_threshold = 1.0  # Wait 1.0 seconds of silence before assuming user is done
+    r.pause_threshold = 2.0  # Wait 2.0 seconds of silence before assuming user is done
     try:
         with sr.Microphone() as source:
             r.adjust_for_ambient_noise(source, duration=1.0)

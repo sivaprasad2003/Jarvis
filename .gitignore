@@ -2,7 +2,7 @@
 
 gitignore_content = '''
 # Ignore virtual environment
-venv_jarvis/
+.venv/
 
 # Ignore Python cache files
 __pycache__/
