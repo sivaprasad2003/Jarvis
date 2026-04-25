@@ -5,7 +5,6 @@ from core.config import WAKE_WORD, AI_MODE, STANDBY_MODE, MEMORY_STORE
 from core.object_detection import detect_objects, ensure_yolo_files, stop_detection_event
 from core.memory import remember_this, recall_memory
 from core.media_control import play_pause_media, prev_song, volume_up, volume_down, mute, next_song, unmute, set_volume, parse_volume_percentage
-from core.gemini_ai import ask_gemini_fallback
 from core.utils import handle_error
 from core.screenshot import take_screenshot, show_last_screenshot, open_screenshot_folder
 from core.battery_health import report_battery_health
@@ -32,19 +31,54 @@ import psutil
 import datetime
 import requests
 import threading
-import subprocess # Added for opening VS Code
+import subprocess 
+import time
 
 # ==========================================
 # OFFLINE AI ENGINE (OLLAMA + TINY MODEL)
 # ==========================================
-def local_llm_query(prompt, system_prompt="You are Jarvis, a concise and helpful AI assistant.", model="tinyllama"):
-    """Queries your local offline LLM via Ollama."""
+def preload_offline_ai():
+    """Starts Ollama and pre-loads the model into RAM for instant responses."""
+    speak("Initializing offline neural network. Please wait a moment.")
+
+    
+    try:
+        requests.get("http://localhost:11434/", timeout=2)
+    except requests.exceptions.ConnectionError:
+        try:
+            subprocess.Popen(["ollama", "serve"], shell=True)
+            time.sleep(4)
+        except Exception:
+            speak("Failed to start Ollama server automatically. Please open it manually.")
+            return
+
+    try:
+        url = "http://localhost:11434/api/generate"
+        payload = {
+            "model": "tinyllama",
+            "prompt": "system check",
+            "stream": False,
+            "keep_alive": -1 
+        }
+        requests.post(url, json=payload, timeout=120)
+        speak("Neural network successfully loaded into memory.")
+    except Exception as e:
+        print(f"[DEBUG] Offline AI Warmup Error: {e}")
+        speak("Warning. Offline AI failed to load.")
+
+def local_llm_query(prompt, system_prompt="You are Jarvis. Answer strictly in one short sentence. Do not elaborate.", model="tinyllama", temp=0.2, max_tokens=100):
+    """Queries your local offline LLM via Ollama with strict output limiters."""
     url = "http://localhost:11434/api/generate"
     payload = {
         "model": model,
         "prompt": prompt,
         "system": system_prompt,
-        "stream": False
+        "stream": False,
+        "keep_alive": -1,
+        "options": {
+            "temperature": temp,           # 0.1 = robotic/precise, 0.8 = creative/rambling
+            "num_predict": max_tokens      # Hard cap on how many words it can generate
+        }
     }
     try:
         response = requests.post(url, json=payload, timeout=30)
@@ -55,42 +89,57 @@ def local_llm_query(prompt, system_prompt="You are Jarvis, a concise and helpful
         return f"Offline AI error: {e}"
 
 def determine_intent(user_input):
-    """Uses the tiny local LLM to classify the user's intent."""
+    """Uses the tiny local LLM to classify the user's intent instantly."""
     router_prompt = f"""
     Classify the following user input into exactly one of these two categories:
     1. COMMAND (if the user wants to open an app, control the volume, or perform a PC action)
     2. QUESTION (if the user is asking for information, code generation, or general knowledge)
     
-    Respond ONLY with the word COMMAND or QUESTION. No other text.
+    Respond ONLY with the word COMMAND or QUESTION.
     User input: "{user_input}"
     """
-    intent = local_llm_query(router_prompt, "You are a strict text classification engine.", model="tinyllama")
+    # Extremely low temperature and token limit for lightning-fast routing
+    intent = local_llm_query(
+        router_prompt, 
+        system_prompt="You are a strict text classification engine. Output exactly one word.", 
+        model="tinyllama", 
+        temp=0.0, 
+        max_tokens=5
+    )
     if "COMMAND" in intent.upper():
         return "COMMAND"
     return "QUESTION"
 
 def generate_and_open_code(prompt):
-    """Generates code using the local LLM and safely opens it in VS Code."""
+    """Generates pure code using the local LLM and safely opens it in VS Code."""
     speak("Generating code offline. Please wait a moment, sir.")
     
-    code_prompt = f"Write python code for the following request. Provide ONLY the raw Python code, no markdown formatting, no explanations, no backticks. \nRequest: {prompt}"
-    generated_code = local_llm_query(code_prompt, model="tinyllama")
+    code_prompt = f"Request: {prompt}"
+    
+    # Strict prompt forcing it to act like a compiler, not a chatbot
+    strict_coder_prompt = "You are a Python compiler. Output ONLY raw, runnable Python code. NO markdown formatting. NO backticks. NO explanations. NO comments."
+    
+    generated_code = local_llm_query(
+        code_prompt, 
+        system_prompt=strict_coder_prompt, 
+        model="tinyllama", 
+        temp=0.1,         # Keeps code predictable and syntax-perfect
+        max_tokens=400    # Allows enough room for the code snippet
+    )
     
     if "ERROR_OFFLINE" in generated_code:
         speak("My offline AI engine is currently unreachable. Please ensure Ollama is running.")
         return
 
-    # Clean up formatting if the LLM accidentally adds markdown
+    # Extra safety cleanup in case TinyLlama disobeys the prompt
     generated_code = generated_code.replace("```python", "").replace("```", "").strip()
     
-    # Save to a temporary file on Desktop
     file_path = os.path.join(os.path.expanduser("~"), "Desktop", "jarvis_generated.py")
     with open(file_path, "w", encoding="utf-8") as file:
         file.write(generated_code)
     
     speak("Code generated. Opening in Visual Studio Code for your review.")
     
-    # Launch VS Code pointing to the new file
     try:
         subprocess.run(["code", file_path], shell=True)
     except Exception:
@@ -102,8 +151,8 @@ def generate_and_open_code(prompt):
 # ==========================================
 def jarvis_main():
     speak("Jarvis online and ready.")
+    
     start_listening_thread()
-    ai_mode_active = False
     speech.REQUIRE_WAKE_WORD = True
     while True:
         try:
@@ -230,7 +279,7 @@ def jarvis_main():
             elif "are you there" in command:
                 speak("At your service sir.")    
 
-            elif "launch" in command and "open" not in command: # prevent clash with advanced os
+            elif "launch" in command and "open" not in command:
                 app_name = command.replace("launch", "").strip()
                 if app_name:
                     speak(f"Attempting to launch {app_name}")
@@ -240,7 +289,6 @@ def jarvis_main():
                     else:
                         speak(f"Done.")   
                     
-
             elif "who are you" in command or "tell me about yourself" in command:
                 speak("I am JARVIS, your personal AI assistant, designed with inspiration of Tony Stark. At your service, sir.")
             elif "are you iron man" in command:
@@ -250,7 +298,7 @@ def jarvis_main():
 
             # === REMINDERS & ALARMS ===
             elif "set reminder for" in command:
-                import re, threading
+                import re
                 match = re.search(r"set reminder for (\d+) (second|seconds|minute|minutes|hour|hours)", command)
                 if match:
                     value, unit = int(match.group(1)), match.group(2)
@@ -387,21 +435,28 @@ def jarvis_main():
                 intent = determine_intent(command)
                 
                 if intent == "QUESTION":
-                    if "write code" in command or "generate code" in command or "code for" in command or "python script" in command:
-                        # Spawns in a thread so Jarvis doesn't freeze while generating
+                    if any(kw in command for kw in ["write code", "generate code", "code for", "python script"]):
                         threading.Thread(target=generate_and_open_code, args=(command,), daemon=True).start()
                     else:
-                        # General offline question answering
-                        speak("Let me consult my offline databanks.")
                         def offline_answer(query):
-                            answer = local_llm_query(query)
+                            # Check if the user explicitly asked for an explanation
+                            if "explain" in query.lower():
+                                system_prompt = "You are Jarvis. Provide a clear, detailed, and helpful explanation for the user's query."
+                                # Higher tokens and temp for a detailed answer
+                                answer = local_llm_query(query, system_prompt=system_prompt, temp=0.4, max_tokens=300)
+                            else:
+                                system_prompt = "You are Jarvis. Answer strictly in one short, direct sentence. Give the answer immediately. No yapping. No elaborating."
+                                # Extremely strict limits for a 1-line answer
+                                answer = local_llm_query(query, system_prompt=system_prompt, temp=0.1, max_tokens=40)
+                            
                             if "ERROR_OFFLINE" in answer:
-                                speak("My offline AI engine is unreachable. Please make sure Ollama is running.")
+                                speak("My offline AI engine is unreachable.")
                             else:
                                 speak(answer)
+                                
                         threading.Thread(target=offline_answer, args=(command,), daemon=True).start()
                 else:
-                    pass # Unrecognized command intent, silent fail
+                    pass
 
         except Exception as e:
             handle_error("jarvis_main", e)
