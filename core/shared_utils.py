@@ -32,7 +32,74 @@ import psutil
 import datetime
 import requests
 import threading
+import subprocess # Added for opening VS Code
 
+# ==========================================
+# OFFLINE AI ENGINE (OLLAMA + TINY MODEL)
+# ==========================================
+def local_llm_query(prompt, system_prompt="You are Jarvis, a concise and helpful AI assistant.", model="tinyllama"):
+    """Queries your local offline LLM via Ollama."""
+    url = "http://localhost:11434/api/generate"
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "system": system_prompt,
+        "stream": False
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=30)
+        return response.json()['response'].strip()
+    except requests.exceptions.ConnectionError:
+        return "ERROR_OFFLINE: Ollama server is not running."
+    except Exception as e:
+        return f"Offline AI error: {e}"
+
+def determine_intent(user_input):
+    """Uses the tiny local LLM to classify the user's intent."""
+    router_prompt = f"""
+    Classify the following user input into exactly one of these two categories:
+    1. COMMAND (if the user wants to open an app, control the volume, or perform a PC action)
+    2. QUESTION (if the user is asking for information, code generation, or general knowledge)
+    
+    Respond ONLY with the word COMMAND or QUESTION. No other text.
+    User input: "{user_input}"
+    """
+    intent = local_llm_query(router_prompt, "You are a strict text classification engine.", model="tinyllama")
+    if "COMMAND" in intent.upper():
+        return "COMMAND"
+    return "QUESTION"
+
+def generate_and_open_code(prompt):
+    """Generates code using the local LLM and safely opens it in VS Code."""
+    speak("Generating code offline. Please wait a moment, sir.")
+    
+    code_prompt = f"Write python code for the following request. Provide ONLY the raw Python code, no markdown formatting, no explanations, no backticks. \nRequest: {prompt}"
+    generated_code = local_llm_query(code_prompt, model="tinyllama")
+    
+    if "ERROR_OFFLINE" in generated_code:
+        speak("My offline AI engine is currently unreachable. Please ensure Ollama is running.")
+        return
+
+    # Clean up formatting if the LLM accidentally adds markdown
+    generated_code = generated_code.replace("```python", "").replace("```", "").strip()
+    
+    # Save to a temporary file on Desktop
+    file_path = os.path.join(os.path.expanduser("~"), "Desktop", "jarvis_generated.py")
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(generated_code)
+    
+    speak("Code generated. Opening in Visual Studio Code for your review.")
+    
+    # Launch VS Code pointing to the new file
+    try:
+        subprocess.run(["code", file_path], shell=True)
+    except Exception:
+        speak("I could not find VS Code in your system path. Opening in Notepad instead.")
+        os.system(f"start notepad {file_path}")
+
+# ==========================================
+# MAIN JARVIS LOOP
+# ==========================================
 def jarvis_main():
     speak("Jarvis online and ready.")
     start_listening_thread()
@@ -163,7 +230,7 @@ def jarvis_main():
             elif "are you there" in command:
                 speak("At your service sir.")    
 
-            elif "launch" in command:
+            elif "launch" in command and "open" not in command: # prevent clash with advanced os
                 app_name = command.replace("launch", "").strip()
                 if app_name:
                     speak(f"Attempting to launch {app_name}")
@@ -209,7 +276,7 @@ def jarvis_main():
             elif "tell me the news" in command or "news" in command:
                 try:
                     from core.config import NEWSAPI_KEY
-                    news_api = NEWSAPI_KEY # Replace with your free API key
+                    news_api = NEWSAPI_KEY 
                     response = requests.get(news_api)
                     articles = response.json().get("articles", [])
                     if articles:
@@ -222,11 +289,10 @@ def jarvis_main():
                     handle_error("news", e)
                     speak("News service error.")  
                     
-             # --- NEW ADVANCED COMMANDS ---
-        
+             # --- ADVANCED OS COMMANDS ---
             elif "type for me" in command:
                 speak("What should I type, sir?")
-                dictation = listen() # Uses your existing listen() function
+                dictation = listen() 
                 if dictation:
                     type_dictation(dictation)
                     speak("Typing complete.")
@@ -256,9 +322,8 @@ def jarvis_main():
                 response = clear_temp_files()
                 speak(response)
 
-            elif "launch" in command or "open" in command:
-                # Dynamically parses "launch [app name]"
-                app_name = command.replace("launch", "").replace("open", "").strip()
+            elif "open" in command:
+                app_name = command.replace("open", "").strip()
                 if app_name:
                     response = dynamic_app_launcher(app_name)
                     speak(response)          
@@ -301,31 +366,6 @@ def jarvis_main():
 
             elif "will it rain" in command or "rain today" in command:
                 will_it_rain()
-       
-            # === AI MODE ===
-            elif "activate ai mode" in command or "enter gemini" in command or "let's talk" in command:
-                ai_mode_active = True
-                speech.REQUIRE_WAKE_WORD = False
-                speak("AI Mode activated. You can speak to me naturally now without saying Jarvis. How can I help you?")
-                continue
-
-            # Process any commands in AI mode if active, and handle deactivation
-            if ai_mode_active:
-                if "deactivate ai mode" in command or "leave gemini" in command or "exit ai mode" in command or "stop ai mode" in command or "goodbye" in command.lower():
-                    ai_mode_active = False
-                    speech.REQUIRE_WAKE_WORD = True
-                    speak("Exiting AI conversational mode. Standard command protocols restored.")
-                    continue
-                
-                # Exclude basic commands from accidentally triggering Gemini constantly
-                local_commands = ["volume", "mute", "turn on", "turn off", "shutdown", "stop listening"]
-                if not any(lc in command.lower() for lc in local_commands):
-                    def process_gemini(query):
-                        reply = ask_gemini_fallback(query)
-                        speak(reply)
-                        
-                    threading.Thread(target=process_gemini, args=(command,), daemon=True).start()
-                continue
 
             # === EXIT / SHUTDOWN ===
             elif "exit yourself jarvis" in command or "close jarvis subsystem" in command:
@@ -342,8 +382,26 @@ def jarvis_main():
                 import sys
                 sys.exit(0)
 
+            # === OFFLINE AI FALLBACK (Code Generation & Questions) ===
             else:
-                pass # Silently ignore ambient noise and unidentified chatter
+                intent = determine_intent(command)
+                
+                if intent == "QUESTION":
+                    if "write code" in command or "generate code" in command or "code for" in command or "python script" in command:
+                        # Spawns in a thread so Jarvis doesn't freeze while generating
+                        threading.Thread(target=generate_and_open_code, args=(command,), daemon=True).start()
+                    else:
+                        # General offline question answering
+                        speak("Let me consult my offline databanks.")
+                        def offline_answer(query):
+                            answer = local_llm_query(query)
+                            if "ERROR_OFFLINE" in answer:
+                                speak("My offline AI engine is unreachable. Please make sure Ollama is running.")
+                            else:
+                                speak(answer)
+                        threading.Thread(target=offline_answer, args=(command,), daemon=True).start()
+                else:
+                    pass # Unrecognized command intent, silent fail
 
         except Exception as e:
             handle_error("jarvis_main", e)
