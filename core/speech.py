@@ -2,7 +2,7 @@ import pyttsx3
 import speech_recognition as sr
 import os
 import threading
-
+import time
 import queue
 
 tts_queue = queue.Queue()
@@ -17,8 +17,11 @@ def tts_worker():
         
     import win32com.client
     speaker = win32com.client.Dispatch("SAPI.SpVoice")
-    # Set the speech rate (default is 0, range is generally -10 to +10)
-    speaker.Rate = 1
+    speaker.Rate = 0  # 0 is the normal comfortable speed
+    for voice in speaker.GetVoices():
+        if "Zira" in voice.GetDescription() or "Female" in voice.GetDescription():
+            speaker.Voice = voice
+            break
     
     while True:
         item = tts_queue.get()
@@ -26,7 +29,9 @@ def tts_worker():
             break
         text, event = item
         try:
-            speaker.Speak(text)
+            # Adding a tiny pause to prevent the audio driver from clipping the first syllable
+            time.sleep(0.1)
+            speaker.Speak("... " + text)
         except Exception as e:
             print(f"[Speak Error] {e}")
         finally:
@@ -45,11 +50,15 @@ def speak(text):
 
 def listen():
     r = sr.Recognizer()
+    r.energy_threshold = 400
+    r.dynamic_energy_threshold = True
+    r.pause_threshold = 1.0  # Wait 1.0 seconds of silence before assuming user is done
     try:
         with sr.Microphone() as source:
-            r.adjust_for_ambient_noise(source, duration=1)
+            r.adjust_for_ambient_noise(source, duration=1.0)
             print("Listening...")
-            audio = r.listen(source)
+            # timeout=None waits forever for speech to begin. phrase_time_limit=None lets user speak endlessly.
+            audio = r.listen(source, timeout=None, phrase_time_limit=None)
             recog_result = r.recognize_google(audio)
             if isinstance(recog_result, str):
                 return recog_result.lower()
@@ -65,6 +74,8 @@ def listen():
     except sr.UnknownValueError:
         print("Sorry, I didn't catch that. Could you repeat?")
         return ""
+    except sr.WaitTimeoutError:
+        return ""
     except sr.RequestError:
         speak("I'm having trouble connecting to the speech service.")
         return ""
@@ -73,8 +84,6 @@ def listen():
         handle_error("listen", e)
         return ""
 
-import queue
-
 command_queue = queue.Queue()
 listening_thread = None
 stop_event = threading.Event()
@@ -82,9 +91,9 @@ REQUIRE_WAKE_WORD = True  # Flag to allow real-time continuous conversation
 
 def background_listen_loop(wake_word="jarvis"):
     r = sr.Recognizer()
-    r.energy_threshold = 300
+    r.energy_threshold = 400
     r.dynamic_energy_threshold = True
-    r.pause_threshold = 0.5  # Fast response time (0.5s of silence marks end of phrase)
+    r.pause_threshold = 2.0  
     
     print(f"[STANDBY] Continuous listening for '{wake_word}' in background...")
     
@@ -92,13 +101,13 @@ def background_listen_loop(wake_word="jarvis"):
         try:
             with sr.Microphone() as source:
                 print("[STANDBY] Calibrating microphone for background noise...")
-                r.adjust_for_ambient_noise(source, duration=1.5)
+                r.adjust_for_ambient_noise(source, duration=1.0)
                 print("[STANDBY] Microphone active and real-time.")
                 
                 while not stop_event.is_set():
                     try:
-                        # timeout=1 to allow checking stop_event frequently
-                        audio = r.listen(source, timeout=1, phrase_time_limit=10)
+                        # timeout=5 checks stop_event every 5 seconds if no speech.
+                        audio = r.listen(source, timeout=5, phrase_time_limit=None)
                     except sr.WaitTimeoutError:
                         continue
                     except Exception:
@@ -113,7 +122,7 @@ def background_listen_loop(wake_word="jarvis"):
                                 text = ""
                         text = text.lower().strip()
                     except sr.UnknownValueError:
-                        continue # Background noise ignored silently
+                        continue
                     except sr.RequestError:
                         continue
                     except Exception:
@@ -133,9 +142,10 @@ def background_listen_loop(wake_word="jarvis"):
                             command_queue.put(command)
                         else:
                             import winsound
-                            winsound.Beep(500, 200)  # Gentle beep to indicate Jarvis is listening
+                            winsound.Beep(500, 200)
                             try:
-                                cmd_audio = r.listen(source, timeout=3, phrase_time_limit=10)
+                                # After wake word, wait endlessly for the actual command and let user speak as long as they want
+                                cmd_audio = r.listen(source, timeout=None, phrase_time_limit=None)
                                 command = r.recognize_google(cmd_audio)
                                 if isinstance(command, str) and command:
                                     print(f"👤 Command: {command}")
@@ -145,7 +155,6 @@ def background_listen_loop(wake_word="jarvis"):
         except Exception as e:
             from core.utils import handle_error
             handle_error("background_listen_loop", e)
-            import time
             time.sleep(1)
 
 def start_listening_thread():

@@ -18,7 +18,8 @@ def generate_and_save_patch(func_name, error_msg):
             repaired_code = repaired_code[:-3]
             
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        patch_file = f"auto_patch_{func_name}_{timestamp}.py"
+        safe_func_name = str(func_name).replace("\\", "_").replace("/", "_").replace(" ", "_")
+        patch_file = f"auto_patch_{safe_func_name}_{timestamp}.py"
         with open(patch_file, "w") as f:
             f.write(repaired_code.strip())
         print(f"[Self-Healing] Proposed patch saved to {patch_file}")

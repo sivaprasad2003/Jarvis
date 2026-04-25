@@ -104,10 +104,10 @@ def face_login():
         speak("Would you like to register a new face? Say 'yes' or 'no'.")
         for _ in range(3):
             response = listen()
-            if "yes" in response:
+            if "Yes" in response:
                 register_new_face()
                 return face_login()  # Retry login after registration
-            elif "no" in response:
+            elif "No" in response:
                 break
             elif not response:
                 continue
