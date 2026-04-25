@@ -2,7 +2,6 @@ import sqlite3
 import datetime
 import json
 from core.speech import speak
-from core.gemini_ai import ask_gemini_fallback
 from core.utils import handle_error
 
 MEMORY_DB = "memory.db"

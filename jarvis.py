@@ -19,7 +19,6 @@ import numpy as np
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 # ========== CONFIG ==========
-GEMINI_API_KEY = "AIzaSyDAJfovc7LPw8cr6bzaz7fxME3N5bINX70"  # Replace with your Gemini API Key
 WAKE_WORD = "jarvis"
 MEMORY_STORE = ""
 STANDBY_MODE = False
@@ -573,9 +572,6 @@ def jarvis_main():
             os.system("start calc")
         elif "take screenshot" in command:
             take_screenshot()
-        elif AI_MODE and command.strip():
-            response = ask_gemini_fallback(command)
-            speak(response)
         elif command.strip():
             speak("Command not recognized. Perhaps try something else, sir?")
         time.sleep(0.5)

@@ -1,174 +1,188 @@
-import pyttsx3
+import win32com.client
+import pythoncom
 import speech_recognition as sr
-import os
+import queue
 import threading
 import time
-import queue
 
-tts_queue = queue.Queue()
+from core.config import WAKE_WORD
 
-def tts_worker():
-    # Keep initialization in the thread so that COM doesn't crash
+# A Lock ensures Jarvis doesn't try to listen and speak at the exact same micro-second
+audio_lock = threading.Lock()
+speech_queue = queue.Queue()
+is_speaking_flag = False
+stop_speaking_event = threading.Event()
+
+def _speech_worker():
+    global is_speaking_flag
+    """Handles the TTS engine in a dedicated thread."""
     try:
         import pythoncom
         pythoncom.CoInitialize()
-    except Exception:
+    except ImportError:
         pass
         
-    import win32com.client
-    speaker = win32com.client.Dispatch("SAPI.SpVoice")
-    speaker.Rate = 0  # 0 is the normal comfortable speed
-    for voice in speaker.GetVoices():
-        if "Zira" in voice.GetDescription() or "Female" in voice.GetDescription():
-            speaker.Voice = voice
-            break
-    
+    try:
+        speaker = win32com.client.Dispatch("SAPI.SpVoice")
+        speaker.Rate = 0 # -10 to 10 range
+        speaker.Volume = 100
+
+        # Set Zira Voice
+        for voice in speaker.GetVoices():
+            if "zira" in voice.GetDescription().lower():
+                speaker.Voice = voice
+                break
+    except Exception as e:
+        print(f"[TTS Init Error] {e}")
+        return
+
+    SVSFlagsAsync = 1
+    SVSFPurgeBeforeSpeak = 2
+
     while True:
-        item = tts_queue.get()
-        if item is None:
-            break
+        item = speech_queue.get()
+        if item is None: break
+        
         text, event = item
+        
         try:
-            # Adding a tiny pause to prevent the audio driver from clipping the first syllable
-            time.sleep(0.1)
-            speaker.Speak("... " + text)
+            # We explicitly do NOT use audio_lock here so _listen_loop can run simultaneously
+            stop_speaking_event.clear()
+            is_speaking_flag = True
+            speaker.Speak(text, SVSFlagsAsync)
+            
+            while True:
+                if speaker.WaitUntilDone(100):
+                    break
+                if stop_speaking_event.is_set():
+                    speaker.Speak("", SVSFPurgeBeforeSpeak | SVSFlagsAsync)
+                    break
         except Exception as e:
             print(f"[Speak Error] {e}")
         finally:
+            is_speaking_flag = False
             if event:
                 event.set()
-            tts_queue.task_done()
+            speech_queue.task_done()
 
-tts_thread = threading.Thread(target=tts_worker, daemon=True)
-tts_thread.start()
+# Start speech worker
+threading.Thread(target=_speech_worker, daemon=True).start()
 
-def speak(text):
+def speak(text, wait=True):
+    """Sends text to the speech queue and optionally waits for it to finish."""
     print(f"JARVIS: {text}")
-    event = threading.Event()
-    tts_queue.put((text, event))
-    event.wait()  # Block caller until speech finishes to prevent overlapping audio
+    event = threading.Event() if wait else None
+    speech_queue.put((text, event))
+    
+    if wait:
+        event.wait()
 
-def listen():
-    r = sr.Recognizer()
-    r.energy_threshold = 400
-    r.dynamic_energy_threshold = True
-    r.pause_threshold = 2.0  # Wait 2.0 seconds of silence before assuming user is done
-    try:
-        with sr.Microphone() as source:
-            r.adjust_for_ambient_noise(source, duration=1.0)
-            print("Listening...")
-            # timeout=None waits forever for speech to begin. phrase_time_limit=None lets user speak endlessly.
-            audio = r.listen(source, timeout=None, phrase_time_limit=None)
-            recog_result = r.recognize_google(audio)
-            if isinstance(recog_result, str):
-                return recog_result.lower()
-            elif isinstance(recog_result, (list, tuple)):
-                for alt in recog_result:
-                    if isinstance(alt, str):
-                        return alt.lower()
-                print("[ERROR] No valid string recognized in alternatives.")
-                return ""
-            else:
-                print(f"[ERROR] Unexpected recognition result type: {type(recog_result)}")
-                return ""
-    except sr.UnknownValueError:
-        print("Sorry, I didn't catch that. Could you repeat?")
-        return ""
-    except sr.WaitTimeoutError:
-        return ""
-    except sr.RequestError:
-        speak("I'm having trouble connecting to the speech service.")
-        return ""
-    except Exception as e:
-        from core.utils import handle_error
-        handle_error("listen", e)
-        return ""
+REQUIRE_WAKE_WORD = True
+
+# --- Flawless Speech Recognition Setup ---
+r = sr.Recognizer()
+
+# CORE OPTIMIZATIONS
+r.energy_threshold = 300 
+r.dynamic_energy_threshold = True 
+r.dynamic_energy_adjustment_damping = 0.15 
+r.dynamic_energy_ratio = 1.5
+
+r.pause_threshold = 1.2
+r.non_speaking_duration = 0.5
+r.operation_timeout = None
 
 command_queue = queue.Queue()
-listening_thread = None
-stop_event = threading.Event()
-REQUIRE_WAKE_WORD = True  # Flag to allow real-time continuous conversation
+listening_thread_active = False
 
-def background_listen_loop(wake_word="jarvis"):
-    r = sr.Recognizer()
-    r.energy_threshold = 400
-    r.dynamic_energy_threshold = True
-    r.pause_threshold = 2.0  
+def _listen_loop():
+    """Background thread that continuously listens for speech without freezing."""
+    global listening_thread_active
     
-    print(f"[STANDBY] Continuous listening for '{wake_word}' in background...")
-    
-    while not stop_event.is_set():
-        try:
-            with sr.Microphone() as source:
-                print("[STANDBY] Calibrating microphone for background noise...")
-                r.adjust_for_ambient_noise(source, duration=1.0)
-                print("[STANDBY] Microphone active and real-time.")
+    with sr.Microphone() as source:
+        print("\n🎙️ Initializing microphone and mapping ambient noise...")
+        r.adjust_for_ambient_noise(source, duration=2.0)
+        print("✅ Microphone calibrated. Jarvis is now listening flawlessly.")
+        
+        while listening_thread_active:
+            try:
+                # No audio_lock here: we listen concurrently to allow interruptions
+                audio = r.listen(source, timeout=1, phrase_time_limit=20)
                 
-                while not stop_event.is_set():
+                threading.Thread(target=_process_audio, args=(audio,), daemon=True).start()
+            except sr.WaitTimeoutError:
+                continue
+            except Exception as e:
+                print(f"[Mic Error] {e}")
+                time.sleep(1)
+
+def _process_audio(audio):
+    """Sends captured audio to the transcription engine."""
+    global REQUIRE_WAKE_WORD, is_speaking_flag
+    try:
+        command = r.recognize_google(audio).lower()
+        
+        # If Jarvis is currently speaking, ONLY accept interrupt commands to avoid self-triggering feedback loops
+        if is_speaking_flag:
+            if any(word in command for word in ["stop", "wait"]):
+                print("🛑 Interrupting Jarvis...")
+                stop_speaking_event.set()
+                # Empty the speech queue so he doesn't immediately say the next queued sentence
+                while not speech_queue.empty():
                     try:
-                        # timeout=5 checks stop_event every 5 seconds if no speech.
-                        audio = r.listen(source, timeout=5, phrase_time_limit=None)
-                    except sr.WaitTimeoutError:
-                        continue
-                    except Exception:
-                        continue
-                    
-                    try:
-                        text = r.recognize_google(audio)
-                        if not isinstance(text, str):
-                            if isinstance(text, (list, tuple)):
-                                text = next((a for a in text if isinstance(a, str)), "")
-                            else:
-                                text = ""
-                        text = text.lower().strip()
-                    except sr.UnknownValueError:
-                        continue
-                    except sr.RequestError:
-                        continue
-                    except Exception:
-                        continue
-                    
-                    if not text:
-                        continue
-                        
-                    global REQUIRE_WAKE_WORD
-                    if not REQUIRE_WAKE_WORD:
-                        print(f"👤 [Voice]: {text}")
-                        command_queue.put(text)
-                    elif wake_word in text:
-                        command = text.split(wake_word, 1)[-1].strip()
-                        if command:
-                            print(f"👤 Command explicitly triggered: {command}")
-                            command_queue.put(command)
-                        else:
-                            import winsound
-                            winsound.Beep(500, 200)
-                            try:
-                                # After wake word, wait endlessly for the actual command and let user speak as long as they want
-                                cmd_audio = r.listen(source, timeout=None, phrase_time_limit=None)
-                                command = r.recognize_google(cmd_audio)
-                                if isinstance(command, str) and command:
-                                    print(f"👤 Command: {command}")
-                                    command_queue.put(command.lower())
-                            except (sr.UnknownValueError, sr.WaitTimeoutError):
-                                continue
-        except Exception as e:
-            from core.utils import handle_error
-            handle_error("background_listen_loop", e)
-            time.sleep(1)
+                        item = speech_queue.get_nowait()
+                        if item[1]:
+                            item[1].set()
+                        speech_queue.task_done()
+                    except queue.Empty:
+                        break
+            return # Ignore all other transcribed words while Jarvis is speaking
+        
+        if REQUIRE_WAKE_WORD:
+            if WAKE_WORD in command:
+                cleaned_command = command.replace(WAKE_WORD, "").strip()
+                if cleaned_command: 
+                    print(f"👤 You: {cleaned_command}")
+                    command_queue.put(cleaned_command)
+                else: 
+                    speak("Sir?")
+        else:
+            print(f"👤 You: {command}")
+            command_queue.put(command)
+            
+    except sr.UnknownValueError:
+        pass
+    except sr.RequestError:
+        print("⚠️ [Network Error] Could not connect to Speech Recognition servers.")
 
 def start_listening_thread():
-    global listening_thread
-    if listening_thread is None or not listening_thread.is_alive():
-        stop_event.clear()
-        listening_thread = threading.Thread(target=background_listen_loop, daemon=True)
-        listening_thread.start()
+    """Starts the background listening loop."""
+    global listening_thread_active
+    if not listening_thread_active:
+        listening_thread_active = True
+        t = threading.Thread(target=_listen_loop, daemon=True)
+        t.start()
 
 def stop_listening_thread():
-    stop_event.set()
+    """Stops the background listening loop."""
+    global listening_thread_active
+    listening_thread_active = False
 
 def get_next_command(timeout=1.0):
+    """Retrieves the next recognized command from the queue."""
     try:
         return command_queue.get(timeout=timeout)
     except queue.Empty:
         return None
+
+def listen():
+    """Direct, synchronous listen function used specifically for dictation."""
+    with sr.Microphone() as source:
+        try:
+            with audio_lock:
+                r.adjust_for_ambient_noise(source, duration=0.5)
+                print("🎧 Dictation active...")
+                audio = r.listen(source, timeout=5, phrase_time_limit=20)
+            return r.recognize_google(audio).lower()
+        except:
+            return ""
