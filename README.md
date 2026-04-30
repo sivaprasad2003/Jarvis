@@ -1,6 +1,6 @@
 # JARVIS AI Assistant 💻🎙️🤖
 
-JARVIS is your personal AI assistant that understands voice commands, recognizes faces, seamlessly launches Windows applications, detects objects using AI vision, manages system functions, and even chats with you dynamically using Google Gemini AI.
+JARVIS is your personal AI assistant that understands voice commands, recognizes faces, seamlessly launches Windows applications, detects objects using AI vision, manages system functions, and even chats with you dynamically using Google Gemini AI or offline local LLM via Ollama.
 
 ---
 
@@ -9,6 +9,7 @@ JARVIS is your personal AI assistant that understands voice commands, recognizes
 *   🔐 **Face Authentication Login**: Securely authenticate using your face. Drop images of known users into `known_faces/` or seamlessly enroll new users via voice.
 *   🎧 **True Background Voice Recognition**: Uses `SpeechRecognition` to run silently in the background, gracefully ignoring ambient chatter and TV noise until the wake word is spoken.
 *   🧠 **Conversational Gemini AI**: Fully integrated with Google Generative AI (`gemini-2.5-flash`). Say "activate AI mode" to drop the wake word requirement and chat naturally.
+*   🤖 **Offline AI with Ollama**: Local LLM support using TinyLlama for instant responses, code generation, and intent classification without internet dependency.
 *   🧏‍♂️ **Native SAPI5 TTS Engine**: Custom-integrated native Windows TTS (`SAPI.SpVoice`) running on its own dedicated Thread Queue. JARVIS never hangs, never skips lines, and delivers flawless, synchronous vocal responses.
 *   🚀 **Ghost-Protocol App Launcher**: Take native OS control. Say `open [app name]` and JARVIS instantly executes a macro to press your Windows key, securely type the application name, and launch it (just like a human would).
 *   🎥 **Real-time Object Detection**: Uses OpenCV to analyze your camera feed and vocally describe what he sees when asked.
@@ -16,6 +17,12 @@ JARVIS is your personal AI assistant that understands voice commands, recognizes
 *   🎛️ **Advanced System Controls**: Shutdown, restart, hibernate, lock your workstation, run speed tests, check CPU temperatures, fan speeds, and exact battery health.
 *   🧠 **Contextual Memory**: Ask JARVIS to remember facts, passwords, or data, which he saves persistently across reboots to a discrete JSON file.
 *   📸 **Screenshot Capabilities**: Capture, view, and organize screenshots entirely by voice command.
+*   🪟 **Window Management**: Switch windows, close apps, minimize all, and control desktop.
+*   📋 **Clipboard & System Utilities**: Read clipboard, empty recycle bin, clear temp files, and optimize system.
+*   ⏰ **Reminders & Alarms**: Set timed reminders and get current time/date information.
+*   😂 **Entertainment**: Tell jokes, fetch news headlines, and check weather forecasts.
+*   🌐 **Connectivity Controls**: Toggle WiFi and Bluetooth.
+*   🎨 **Theme Switching**: Switch between dark and light modes.
 
 ---
 
@@ -61,16 +68,17 @@ pip install -r requirements.txt
 ```
 > ⚠️ **Note on NumPy**: The `requirements.txt` specifically locks `numpy < 2.0.0`. Do not upgrade NumPy into the `2.x` branches. The pre-compiled Dlib native wheels will throw a total `Unsupported Image Type` C-Contiguous RuntimeError if NumPy 2.x is used!
 
-### 5. Configure Google Gemini AI
+### 5. Install Ollama for Offline AI (Optional but Recommended)
 
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey) and sign in.
-2. Create and copy an API key. 
-3. Open `core/config.py` and assign the key directly:
-```python
-GEMINI_API_KEY = "your_actual_google_gemini_api_key_here"
+For offline AI capabilities, install Ollama and pull the TinyLlama model:
+1. Download and install Ollama from [ollama.ai](https://ollama.ai/).
+2. Open a terminal and run:
+```powershell
+ollama pull tinyllama
 ```
+This enables local LLM queries, code generation, and intent classification without requiring an internet connection.
 
----
+
 
 ## 📸 Adding Faces for Authentication
 
@@ -98,6 +106,21 @@ python main.py
 Once the system boots and you pass Facial Recognition, say "**Jarvis**" followed by an action:
 
 *   **App Launching**: `"Jarvis, open google chrome"` | `"Jarvis, open calculator"` | `"Jarvis, open discord"`
+*   **System Controls**: `"Jarvis, shutdown system"` | `"Jarvis, lock system"` | `"Jarvis, hibernate system"`
+*   **Media Control**: `"Jarvis, play media"` | `"Jarvis, volume up"` | `"Jarvis, mute"` | `"Jarvis, play Bohemian Rhapsody on youtube"`
+*   **Object Detection**: `"Jarvis, start object detection"` | `"Jarvis, what do you see"`
+*   **Screenshots**: `"Jarvis, take screenshot"` | `"Jarvis, show last screenshot"`
+*   **Memory**: `"Jarvis, remember my password is 1234"` | `"Jarvis, what do you remember"`
+*   **Window Management**: `"Jarvis, switch window"` | `"Jarvis, close this window"` | `"Jarvis, minimize all"`
+*   **Utilities**: `"Jarvis, read clipboard"` | `"Jarvis, empty recycle bin"` | `"Jarvis, clear temp files"`
+*   **Information**: `"Jarvis, what time is it"` | `"Jarvis, weather"` | `"Jarvis, speed test"` | `"Jarvis, system status"`
+*   **Reminders**: `"Jarvis, set reminder for 5 minutes"`
+*   **Entertainment**: `"Jarvis, tell me a joke"` | `"Jarvis, tell me the news"`
+*   **AI Queries**: `"Jarvis, what is the capital of France"` | `"Jarvis, write code for a hello world program"`
+*   **Themes**: `"Jarvis, enable dark mode"` | `"Jarvis, enable light mode"`
+*   **Connectivity**: `"Jarvis, enable wifi"` | `"Jarvis, disable bluetooth"`
+
+---
 *   **Media**: `"Jarvis, play Interstellar Theme on youtube"` | `"Jarvis, pause media"` | `"Jarvis, set volume 40%"`
 *   **AI Mode**: `"Jarvis, activate AI mode."` *(He will stop needing the wake-word -> have a normal fluid conversation using Gemini)* -> `"Deactivate AI mode."`
 *   **System/Hardware**: `"Jarvis, system status"` | `"Jarvis, check CPU temperature"` | `"Jarvis, speed test"` 
